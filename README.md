@@ -3,7 +3,7 @@
 联网热搜 + 通义千问 AI 生成脚本 + 通义万相封面（支持上传真人参考图）。
 前端 `jiaoben.html` 经同源 `/api/*` 调用后端代理，后端负责转发 DashScope（通义千问 / 通义万相）与多个免费热搜接口，解决浏览器跨域（CORS）问题。
 
-> ⚠️ 按需求，**通义千问 API Key 已明文写入 `config.json` 并随仓库提交**（仅本机/受控使用）。若仓库设为 Public，Key 会公开暴露，任何人可消耗你的 DashScope 额度。更安全的做法是用环境变量 `DASHSCOPE_API_KEY` 覆盖（优先级高于 config.json）。
+> ⚠️ 按需求，**通义千问 API Key 已明文写入 `config.json` 并随仓库提交**（仅本机/受控使用）。若仓库设为 Public，Key 会公开暴露，任何人可消耗你的 DashScope 额度。想改用环境变量 `DASHSCOPE_API_KEY`，需先把 `config.json` 里的 key 清空——当前优先级为「页面填写 > config.json > 环境变量」，config 有值时 env 不生效。
 
 ## 本地运行
 

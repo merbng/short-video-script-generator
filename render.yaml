@@ -1,0 +1,12 @@
+# Render Blueprint：在 Render 选「New + → Blueprint」并连接本仓库即可一键创建
+services:
+  - type: web
+    name: short-video-script-generator
+    runtime: node
+    plan: free
+    region: singapore
+    branch: main
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /
+    autoDeploy: true
