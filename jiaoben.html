@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>短视频爆款脚本生成器（联网版）</title>
+    <style>
+        *{box-sizing:border-box;font-family:system-ui, sans-serif;}
+        body{padding:20px;max-width:1200px;margin:0 auto;background:#f4f5f7;}
+        .wrap{background:#fff;padding:24px;border-radius:12px;box-shadow:0 2px 10px #00000015;}
+        .stat{background:#eff6ff;padding:12px;border-radius:8px;margin-bottom:16px;}
+        .stat span{margin-right:18px;font-weight:500;}
+        .row{margin-bottom:16px;}
+        label{display:block;margin-bottom:6px;font-weight:500;}
+        input[type="number"],input[type="text"],select,textarea{width:100%;padding:8px;font-size:14px;border:1px solid #cbd5e1;border-radius:6px;}
+        input[type="number"]{max-width:120px;}
+        button{padding:10px 18px;font-size:15px;cursor:pointer;background:#2563eb;color:#fff;border:none;border-radius:6px;margin-right:10px;margin-bottom:8px;}
+        #copyAll{background:#059669;}
+        #clearUsed{background:#dc2626;}
+        .tabs{display:flex;gap:8px;margin-bottom:18px;}
+        .tab{padding:10px 18px;cursor:pointer;border:1px solid #cbd5e1;background:#fff;border-radius:8px;font-weight:500;}
+        .tab.active{background:#2563eb;color:#fff;border-color:#2563eb;}
+        .panel{display:none;}
+        .panel.active{display:block;}
+        #result{margin-top:20px;white-space:pre-wrap;padding:16px;background:#111827;color:#e5e7eb;border-radius:8px;min-height:300px;overflow:auto;}
+        .tip{color:#666;margin-bottom:10px;font-size:13px;}
+        .hotItem{display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:6px;}
+        .hotItem.used{opacity:.45;text-decoration:line-through;}
+        .hotList{max-height:320px;overflow:auto;margin-bottom:12px;}
+        .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+        @media(max-width:760px){.grid2{grid-template-columns:1fr;}}
+        #copyHelper{position:absolute;left:-9999px;opacity:0;}
+        .warn{background:#fff7ed;border:1px solid #fdba74;color:#9a3412;padding:10px 12px;border-radius:8px;margin-bottom:12px;font-size:13px;}
+        .coverGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px;margin-top:14px;}
+        .coverCard{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px;text-align:center;}
+        .uploadRow{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin:8px 0 4px;}
+        .fileLabel{font-size:13px;color:#334155;cursor:pointer;}
+        .fileLabel input{margin-left:6px;}
+        .refPreviewWrap{display:inline-flex;gap:6px;align-items:center;}
+        .refPreviewWrap img{width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid #cbd5e1;}
+        .chk{font-size:13px;color:#334155;display:flex;align-items:center;gap:4px;cursor:pointer;}
+        .coverCard canvas{width:100%;border-radius:8px;display:block;}
+        .coverCard .meta{font-size:12px;color:#475569;margin:6px 0;word-break:break-all;}
+        .dlBtn{background:#7c3aed;padding:6px 12px;font-size:13px;margin:0;}
+        #genCoverBtn{background:#7c3aed;}
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <div class="tabs">
+        <div class="tab active" data-tab="local">本地素材库（离线）</div>
+        <div class="tab" data-tab="online">联网热搜 + AI 展开</div>
+    </div>
+
+    <div class="stat">
+        <span>素材总量：<b id="totalCount">0</b></span>
+        <span>已使用：<b id="usedCount">0</b></span>
+        <span>剩余可用：<b id="remainCount">0</b></span>
+    </div>
+
+    <!-- ================= 本地素材库 ================= -->
+    <div class="panel active" id="panel-local">
+        <div class="tip">说明：复制脚本后自动标记话题为【已使用】，后续生成不再重复抽取</div>
+        <div class="row">
+            <label>生成脚本数量（1~10）</label>
+            <input id="countInput" type="number" min="1" max="10" value="3">
+        </div>
+        <div class="row">
+            <button id="genBtn">开始生成脚本（不重复）</button>
+            <button id="copyAll">一键复制全部内容</button>
+            <button id="clearUsed">清空已使用记录</button>
+        </div>
+    </div>
+
+    <!-- ================= 联网热搜 + AI ================= -->
+    <div class="panel" id="panel-online">
+        <div class="warn" id="onlineWarn"></div>
+        <div class="grid2">
+            <div>
+                <div class="row">
+                    <label>热搜来源</label>
+                    <select id="hotSrc">
+                        <option value="weibo">微博热搜</option>
+                        <option value="douyin">抖音热榜</option>
+                        <option value="bilibili">B站热榜</option>
+                        <option value="xiaohongshu">小红书热榜</option>
+                        <option value="weishi">视频号热榜</option>
+                    </select>
+                </div>
+                <div class="row">
+                    <button id="fetchHotBtn">拉取实时热搜榜</button>
+                </div>
+                <div class="hotList" id="hotList"></div>
+            </div>
+            <div>
+                <div class="row">
+                    <label>通义千问 API Key（可留空，用服务端 config.json / 环境变量）</label>
+                    <input id="apiKey" type="text" placeholder="sk-xxxxxxxx（留空则用本地代理里的配置）">
+                </div>
+                <div class="row">
+                    <label>模型</label>
+                    <select id="model">
+                        <option value="qwen-turbo">qwen-turbo（快/便宜）</option>
+                        <option value="qwen-plus" selected>qwen-plus（均衡推荐）</option>
+                        <option value="qwen-max">qwen-max（最强）</option>
+                    </select>
+                </div>
+                <div class="row">
+                    <label>手动粘贴热点（每行一个，接口被跨域/限流时兜底，或直接用它生成）</label>
+                    <textarea id="manualTopics" rows="6" placeholder="例如：&#10;新能源车底盘减配乱象&#10;家用净水器选购避坑"></textarea>
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <label>生成脚本数量（1~10，取前 N 条已选/已填）</label>
+            <input id="onlineCount" type="number" min="1" max="10" value="1">
+        </div>
+        <div class="row">
+            <button id="genOnlineBtn">用通义千问生成脚本</button>
+            <button id="copyAll2">一键复制全部内容</button>
+            <button id="clearUsedOnline">清空已使用记录</button>
+        </div>
+        <div class="row" style="border-top:1px dashed #cbd5e1;padding-top:14px;">
+            <div class="tip">🎨 封面：通义千问产出5套文案 → 浏览器排版合成 1080×1440 竖版大字封面。<b>人物一律用你上传的真实参考图（绝不替你造人）</b>：默认直接把参考图当背景；勾选「用万相精修」才让 AI 基于参考图换背景/调色（人物仍以参考图为准）。没上传图时退回 AI 生成背景兜底。</div>
+            <div class="uploadRow">
+                <label class="fileLabel">📷 上传参考图（封面人物来源）：<input type="file" id="refImg" accept="image/*"></label>
+                <span id="refPreviewWrap" class="refPreviewWrap"></span>
+                <label class="chk"><input type="checkbox" id="refineChk"> 用万相 AI 按参考图精修（换背景/调色，人物以参考图为准）</label>
+            </div>
+            <button id="genCoverBtn">AI 生成五套封面（对最近生成的话题）</button>
+        </div>
+        <div id="coverStatus" class="tip"></div>
+        <div class="coverGrid" id="coverGrid"></div>
+    </div>
+
+    <div id="result"></div>
+    <textarea id="copyHelper"></textarea>
+</div>
+
+<script>
+// ========== 本地素材库（保留，离线可用） ==========
+const topicPool = [
+    {id:"t001",title:"新能源车底盘减配乱象",hook:"很多新能源车企底盘偷工减料，肉眼看不见最容易糊弄人。",expand:"车身覆盖件看着光鲜，底盘钢材、衬套缩水，长期行驶隐患很大。",logic:"买车只看大屏和加速，忽略底盘结构，是绝大多数车主的通病。",end:"造车不能只做表面功夫，底子才是安全根本。",tags:"#新能源汽车 #底盘安全 #买车避坑 #汽车科普 #消费避坑",comment1:"买车看底盘这件事，很多人提车完全忽略。你买车会升起来看底盘吗？评论区聊聊👇",comment2:"买车优先看什么？A底盘硬件 B智能座舱 C外观内饰。选一个👇",cover1:"新能源车底盘减配，藏在看不见的风险",cover2:"备选（更狠的版本）：外表再炫酷，底盘偷减配最坑人\n买车别只盯着大屏加速"},
+    {id:"t002",title:"家用净水器选购避坑",hook:"净水器别乱买，很多高价款只是营销噱头。",expand:"不少产品夸大过滤效果，滤芯更换成本极高，后期费用吃不消。",logic:"认准核心过滤方案，别被各种花哨附加功能拉高预算。",end:"净水看滤芯，够用耐用，才是真性价比。",tags:"#净水器 #家电避坑 #家装干货 #选购指南 #消费避坑",comment1:"很多净水器看着便宜，换滤芯才是无底洞。你家在用净水器吗？评论区聊聊👇",comment2:"净水器选购，你更看重？A滤芯成本 B过滤等级 C机器价格。选一个👇",cover1:"净水器选购大坑，很多人踩雷",cover2:"备选（更狠的版本）：高价净水器未必好用\n买净水别为营销功能买单"},
+    {id:"t003",title:"家用储能电池安全提醒",hook:"家用储能大火，但电池起火风险不能忽视。",expand:"劣质储能电池BMS保护简陋，过热短路，极易引发火灾。",logic:"不能只看容量价格，电池温控、保护系统才是保命核心。",end:"储能优先安全，不要一味追求低价大容量。",tags:"#储能 #家庭储能 #安全科普 #家电避坑 #消费避坑",comment1:"储能设备越来越多，安全是第一位。你会考虑家装储能吗？评论区聊聊👇",comment2:"储能设备选购，首要关注点：A安全防护 B容量 C价格。选一个👇",cover1:"家用储能火爆，安全隐患别忽视",cover2:"备选（更狠的版本）：储能电池低价陷阱\n容量再大，安全不能妥协"},
+    {id:"t004",title:"网红减脂餐骗局",hook:"网红减脂餐很多是智商税，越吃越难瘦。",expand:"很多套餐热量虚标，碳水隐藏很高，价格贵还很难长期坚持。",logic:"减脂核心是热量缺口，不是靠预制代餐短期突击。",end:"减脂没有捷径，稳定饮食习惯远贵过网红餐。",tags:"#减脂 #减脂餐 #健康避坑 #体重管理 #消费避坑",comment1:"很多减脂预制餐溢价严重，热量标注还不规范。你试过减脂餐吗？评论区聊聊👇",comment2:"减脂你更倾向？A自制家常菜 B网红减脂餐 C运动优先不靠餐。选一个👇",cover1:"网红减脂餐，大多是智商税",cover2:"备选（更狠的版本）：减脂餐溢价严重\n想减脂别依赖网红预制餐"},
+    {id:"t005",title:"充电桩安装避坑",hook:"装私人充电桩，很多人前期忽略踩大坑。",expand:"物业审批、线路距离、电表容量，任何一环卡住，装不了还白花钱。",logic:"线缆粗细、漏电保护，施工偷工减料后期有安全隐患。",end:"装桩先查条件，规范施工，安全第一。",tags:"#充电桩 #新能源汽车 #家装避坑 #电车干货 #消费避坑",comment1:"不少车友买完电车才发现无法装家充。你家有没有私人充电桩？评论区聊聊👇",comment2:"装家充你最担心？A物业不同意 B布线成本 C用电安全。选一个👇",cover1:"私家充电桩安装，避坑要点",cover2:"备选（更狠的版本）：装充电桩别着急下单\n前期手续不查清容易白花钱"},
+    {id:"t006",title:"瓶装饮用水选购误区",hook:"买矿泉水、纯净水，绝大多数人分不清区别。",expand:"名字容易混淆，天然矿泉水、包装饮用水不是一回事，价格差很多。",logic:"看配料表和水源标注，不要被包装营销词误导。",end:"喝水不用盲目买高价，看懂标签就不会被割韭菜。",tags:"#饮用水 #生活科普 #消费避坑 #选购干货 #喝水常识",comment1:"很多人分不清矿泉水和纯净水。你平时喝水偏好哪一类？评论区聊聊👇",comment2:"买瓶装水优先看？A水源 B品牌 C价格。选一个👇",cover1:"瓶装水选购，别被名字忽悠",cover2:"备选（更狠的版本）：高价瓶装水不一定更好\n看懂标签才会选水"},
+    {id:"t007",title:"家用中央空调避坑",hook:"中央空调看着高端，很多商家报价藏套路。",expand:"报价只报主机，风管、辅材、安装费单独加价，总价直接上浮一大截。",logic:"三分设备七分安装，辅材偷换，后期漏水噪音一大堆问题。",end:"中央空调，设备是小头，安装才是重中之重。",tags:"#中央空调 #装修避坑 #家装干货 #家电选购 #消费避坑",comment1:"中央空调安装坑非常多，很多人签合同没看明细。你装修会考虑中央空调吗？评论区聊聊👇",comment2:"中央空调，你最在意？A设备品牌 B安装工艺 C总价预算。选一个👇",cover1:"中央空调报价，藏着不少套路",cover2:"备选（更狠的版本）：中央空调报价陷阱\n不看清辅材极易超预算"},
+    {id:"t008",title:"汽车轮胎选购误区",hook:"换轮胎别只看品牌型号，很多人忽略生产年份。",expand:"库存放了四五年的老化轮胎，哪怕全新，橡胶性能大幅衰减。",logic:"轮胎是唯一接触地面部件，老化裂纹，高速风险极高。",end:"轮胎关乎行车安全，生产日期一定要仔细看。",tags:"#汽车轮胎 #用车知识 #买车养车 #汽车安全 #消费避坑",comment1:"很多车主换胎忽略生产日期，买到库存老化胎。你换轮胎会看年份吗？评论区聊聊👇",comment2:"换轮胎优先看？A品牌 B生产日期 C价格。选一个👇",cover1:"换轮胎必看生产日期，别踩坑",cover2:"备选（更狠的版本）：全新轮胎也会老化\n买轮胎别忽略出厂时间"}
+];
+
+// ========== 通义千问系统提示词（风格 + 爆款公式 + 密度约束） ==========
+const QWEN_SYSTEM = `你是短视频爆款脚本撰写专家，擅长「生活化犀利科普 + 消费避坑」，并精通一条已验证的爆款公式。
+
+【必须套用的公式：12秒4拍】
+① 0-3秒：具体物件 + 一对反差数字（钩子，戳痛点/反常识）
+② 3-7秒：把专业争议翻译成生活比喻（如"两场考试"），让人秒懂
+③ 8秒："更妙的是"二次钩子；此刻同步切近景——景别收紧=凑近说悄悄话的爆料感
+④ 9-12秒：冷幽默收口，不下结论。收口方式每次都要不同——禁止套用固定梗（如"自求多福""你品你细品"等），必须结合该话题当下情境临时造一个松垮、荒诞、留白的反转，让人会心一笑但不给答案
+
+【密度约束】
+全片约75字、6字/秒、单句字幕≤12字、固定机位+1个硬切、制作成本极低。
+
+给定一条网络热点话题，请产出以下字段的 JSON（只输出 JSON，不要任何解释）：
+- hook：拍①口播，具体物件+一对反差数字，口语化犀利，≤18字
+- expand：拍②口播，专业争议→生活比喻，≤30字
+- hook2：拍③口播，以"更妙的是"开头的二次钩子，≤12字
+- end：拍④口播，冷幽默收口、不下结论、且每次生成都要换一种说法（禁止复用同一句收尾），≤15字
+- storyboard：12秒4拍分镜文本（自由生成，严禁套固定模板），需含时间码(0-3s/3-7s/8s/9-12s)、景别、主角动作、字幕要点，并明确写明：固定机位、第8秒同步切近景(景别收紧)、全程仅1个硬切
+- tags：5个话题标签（含#，逗号分隔），偏消费避坑/科普
+- comment1：置顶评论，引导站队互动，带提问和"👇"，≤40字
+- comment2：置顶评论，引导争论，给A/B/C选项并"选一个👇"，≤40字
+- cover1：封面大字标题，≤18字，犀利
+- cover2：备选封面（更狠的版本），可含换行，前面加"备选（更狠的版本）："`;
+
+// ========== 固定模板（生产规格逐字保留；分镜由 AI 按公式计算） ==========
+function defaultStoryboard(item){
+  const h=item.hook||'', e=item.expand||'', l=item.hook2||item.logic||'', n=item.end||'';
+  return `0-3秒｜拍①｜具体物件+反差数字｜主角直视镜头、语气笃定｜「${h}」
+3-7秒｜拍②｜专业争议→生活比喻｜主角放慢语速、抬手示意｜「${e}」
+8秒｜拍③｜"更妙的是"二次钩子｜同步切近景，景别收紧，凑近说悄悄话的爆料感｜「${l}」
+9-12秒｜拍④｜冷幽默收口、不下结论｜双手交叠、挑眉收住｜「${n}」
+（固定机位，全程仅第8秒1个硬切）`;
+}
+
+function buildScript(item){
+  const sb = item.storyboard || defaultStoryboard(item);
+  const hook2 = item.hook2 || item.logic || '';
+  const oral = (item.hook||'') + (item.expand||'') + hook2 + (item.end||'');
+const script = `【视频脚本｜${item.title}】
+时长画幅：12 秒，9:16 竖屏，1080×1920，25fps，单段一次生成，不设片头、不设黑场、不设前奏
+风格调性：生活化犀利科普，自白式、面瘫式真诚，带"替你想明白"的笃定感，克制不夸张；不要电影感、不要广告感、不要沉重调色；画面干净、横平竖直、光线明亮；全片约75字、6字/秒、单句字幕≤12字、固定机位+1个硬切，制作成本极低
+人物一致性：男主严格参考（服装、发型、脸型、体型全程一致），AI数字分身@王晓鹏，中年男性技术宅，30 岁左右，北方人
+场景设定：室内明亮书房，浅色书桌，背景虚化为简约书架，桌子里有两样东西：桌上一台笔记本电脑屏幕亮着（屏幕内容不可辨识），旁边一瓶酣客酱酒图片2。背景是虚化的现代家居陈设。此场景描述块逐字保留
+时间轴分镜：
+${sb}
+口播：${oral}
+镜头光线：暖白台灯加自然窗光，整体明亮干净；人脸有柔和补光，肤色自然通透；背景适度虚化，色调统一偏暖但不黄；固定机位，仅第8秒一次硬切到近景，除此之外不运镜
+后期字幕：不要生成任何字幕，字幕后期由剪映统一添加；单句字幕≤12字；配乐压到人声 30% 以下
+负面词：严禁画面中出现任何文字、字母、数字、字幕条、底部字幕、顶部标题、角标、水印、手机屏幕文字、纸片文字、墙上文字、菜单文字、价签文字、书本文字；绝对不要在画面底部和顶部区域生成任何文字，道具上的真实品牌标识除外，必须与实物完全一致，不得增删、不得变形、不得乱码；不要画面扭曲变形，不要肢体畸形，不要手部变形，不要多指，不要面部崩坏，不要人物数量突变，不要脸型或服装发生变化；不要出现第二个人说话的声音，不要出现与口播无关的人声、杂音、嘈杂背景人声；人物语音清晰自然，口型与语音同步，语音不要含糊不清；不要道具凭空出现或消失，不要镜头剧烈晃动，不要过曝或死黑，不要慢动作，不要转场特效
+🎨 封面大字标题
+${item.cover1||''}
+${item.cover2||''}
+🏷️ 标签/话题建议
+${item.tags||''}
+💬 首条评论（发布后自己置顶）
+版本1（引导站队，拉互动）：
+${item.comment1||''}
+版本2（引导争论，冲评论量）：
+${item.comment2||''}
+`;
+return script;
+}
+
+// ========== 通用：复制 / 已使用统计 ==========
+function getUsedIds(){ const raw=localStorage.getItem("usedScriptIds"); return raw?JSON.parse(raw):[]; }
+function saveUsedIds(l){ localStorage.setItem("usedScriptIds", JSON.stringify(l)); }
+const ONLINE_USED_KEY="usedOnlineTitles";
+function getUsedOnline(){ return JSON.parse(localStorage.getItem(ONLINE_USED_KEY)||"[]"); }
+function markUsedOnline(t){ const l=getUsedOnline(); if(!l.includes(t)) l.push(t); localStorage.setItem(ONLINE_USED_KEY, JSON.stringify(l)); }
+
+function refreshStat(){
+  const activeLocal = document.getElementById('panel-local').classList.contains('active');
+  let total, used;
+  if(activeLocal){
+    total = topicPool.length; used = getUsedIds().length;
+  }else{
+    total = window.__onlineTotal||0; used = getUsedOnline().length;
+  }
+  document.getElementById('totalCount').innerText = total;
+  document.getElementById('usedCount').innerText = used;
+  document.getElementById('remainCount').innerText = Math.max(0, total-used);
+}
+
+// ========== 本地模式逻辑 ==========
+let currentSelectedTopics = [];
+document.getElementById('genBtn').onclick = function(){
+  const num = parseInt(document.getElementById('countInput').value);
+  const resultDom = document.getElementById('result');
+  if(isNaN(num)||num<1||num>10){ resultDom.innerText="数量只能填1~10"; return; }
+  const usedIds = getUsedIds();
+  const unusedList = topicPool.filter(t=>!usedIds.includes(t.id));
+  if(unusedList.length===0){ resultDom.innerText="⚠️ 全部素材已用完，请点击【清空已使用记录】重置"; currentSelectedTopics=[]; refreshStat(); return; }
+  const shuffle=[...unusedList].sort(()=>Math.random()-0.5);
+  const takeCount=Math.min(num, shuffle.length);
+  currentSelectedTopics=shuffle.slice(0,takeCount);
+  let out="";
+  currentSelectedTopics.forEach(s=>{ out+=buildScript(s)+"\n——————————————————————————\n\n"; });
+  resultDom.innerText=out;
+  refreshStat();
+};
+document.getElementById('copyAll').onclick = async function(){ await copyCurrent(currentSelectedTopics, getUsedIds, saveUsedIds); };
+document.getElementById('clearUsed').onclick = function(){
+  localStorage.removeItem("usedScriptIds"); currentSelectedTopics=[];
+  document.getElementById('result').innerText=""; refreshStat(); alert("✅已清空全部使用记录");
+};
+
+// ========== 联网模式逻辑 ==========
+let onlineTopics = []; // {title, hot}
+let lastGeneratedTitles = []; // 最近一次脚本生成的话题（封面生成用）
+let lastOralMap = {};         // 话题 → 口播内容（封面文案参考用）
+function renderHotList(){
+  const used = getUsedOnline();
+  const box = document.getElementById('hotList');
+  box.innerHTML="";
+  onlineTopics.forEach((it,i)=>{
+    const div=document.createElement('div');
+    div.className="hotItem"+(used.includes(it.title)?" used":"");
+    const cb=document.createElement('input');
+    cb.type="checkbox"; cb.value=i; cb.checked=false;
+    cb.disabled=used.includes(it.title);
+    const span=document.createElement('span');
+    span.innerText=(i+1)+". "+it.title+(it.hot?("  （"+it.hot+"）"):"");
+    div.appendChild(cb); div.appendChild(span);
+    box.appendChild(div);
+  });
+  window.__onlineTotal = onlineTopics.length;
+  refreshStat();
+}
+document.getElementById('fetchHotBtn').onclick = async function(){
+  const src=document.getElementById('hotSrc').value;
+  const box=document.getElementById('hotList');
+  box.innerHTML="<div class='tip'>拉取中…</div>";
+  try{
+    const r=await fetch('/api/hot?src='+src);
+    const j=await r.json();
+    if(j.error) throw new Error(j.error);
+    onlineTopics=j.items||[];
+    renderHotList();
+  }catch(e){
+    box.innerHTML="<div class='warn'>拉取失败："+e.message+"<br>可在右侧【手动粘贴热点】里直接填标题生成。</div>";
+  }
+};
+document.getElementById('genOnlineBtn').onclick = async function(){
+  const num=parseInt(document.getElementById('onlineCount').value);
+  const resultDom=document.getElementById('result');
+  if(isNaN(num)||num<1||num>10){ resultDom.innerText="数量只能填1~10"; return; }
+  const model=document.getElementById('model').value;
+  const apiKey=document.getElementById('apiKey').value.trim();
+  // 收集目标话题：优先勾选的热搜，否则用粘贴内容
+  let titles=[];
+  document.querySelectorAll('#hotList input[type=checkbox]').forEach(cb=>{ if(cb.checked) titles.push(onlineTopics[parseInt(cb.value)].title); });
+  if(titles.length===0){
+    const txt=document.getElementById('manualTopics').value.trim();
+    if(txt) titles=txt.split("\n").map(s=>s.trim()).filter(Boolean);
+  }
+  titles=titles.slice(0,num);
+  if(titles.length===0){ resultDom.innerText="请先勾选热搜，或在右侧粘贴热点标题"; return; }
+  const used=getUsedOnline();
+  titles=titles.filter(t=>!used.includes(t));
+  if(titles.length===0){ resultDom.innerText="⚠️ 所选话题都已生成过，请清空记录或更换话题"; return; }
+
+  resultDom.innerText="生成中 0/"+titles.length+" …";
+  lastGeneratedTitles=[]; lastOralMap={};
+  let out="";
+  for(let i=0;i<titles.length;i++){
+    const title=titles[i];
+    resultDom.innerText="生成中 "+(i+1)+"/"+titles.length+"："+title;
+    try{
+      // 随机语气种子：每次生成注入不同收尾风格，避免结尾千篇一律
+      const TONE_SEEDS=['带着点无奈','带着点黑色幽默','带点看戏的轻松','带点讽喻','带点局外人的清醒','带点反差的荒诞','带点欲言又止','带点冷眼旁观'];
+      const seed=TONE_SEEDS[Math.floor(Math.random()*TONE_SEEDS.length)];
+      const r=await fetch('/api/qwen',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({model,apiKey,messages:[
+          {role:'system',content:QWEN_SYSTEM},
+          {role:'user',content:'热点话题：'+title+'\n本次整体语气基调：'+seed+'。请基于该热点，按上述风格生成脚本字段，只输出JSON。'}
+        ]})});
+      const j=await r.json();
+      if(j.error) throw new Error(j.error);
+      let data={};
+      try{ data=JSON.parse(j.content); }catch(e){ data={hook:j.content}; }
+      out+=buildScript({title,...data})+"\n——————————————————————————\n\n";
+      markUsedOnline(title);
+      lastGeneratedTitles.push(title);
+      lastOralMap[title]=(data.hook||'')+(data.expand||'')+(data.hook2||'')+(data.end||'');
+    }catch(e){
+      out+="【生成失败】"+title+"："+e.message+"\n\n";
+    }
+    if(i<titles.length-1) await new Promise(r=>setTimeout(r,300));
+  }
+  resultDom.innerText=out;
+  renderHotList();
+  alert("✅生成完成！已使用的话题已记录，后续不再重复");
+};
+document.getElementById('copyAll2').onclick = async function(){
+  const txt=document.getElementById('result').innerText;
+  if(!txt){ alert("先生成脚本！"); return; }
+  try{ await navigator.clipboard.writeText(txt); }
+  catch(err){
+    const h=document.getElementById('copyHelper'); h.value=txt; h.select(); document.execCommand('copy');
+  }
+  alert("✅复制成功！");
+};
+document.getElementById('clearUsedOnline').onclick=function(){
+  localStorage.removeItem(ONLINE_USED_KEY);
+  document.getElementById('result').innerText=""; renderHotList(); alert("✅已清空联网使用记录");
+};
+
+// ========== 复制兜底（本地模式用） ==========
+async function copyCurrent(selected, getUsed, saveUsed){
+  const txt=document.getElementById('result').innerText;
+  if(!txt||selected.length===0){ alert("先生成脚本！"); return; }
+  try{ await navigator.clipboard.writeText(txt); }
+  catch(err){ const h=document.getElementById('copyHelper'); h.value=txt; h.select(); document.execCommand('copy'); }
+  const usedIds=getUsed();
+  selected.forEach(item=>{ if(!usedIds.includes(item.id)) usedIds.push(item.id); });
+  saveUsed(usedIds); refreshStat();
+  alert("✅复制成功！这批脚本已标记为已使用，后续不会再抽取");
+}
+
+// ========== AI 封面生成 ==========
+const COVER_SYSTEM = `你是短视频封面文案专家，擅长抖音/小红书竖版大字封面。给定热点话题与口播内容，产出5套封面文案，只输出JSON数组，每套结构：
+{"title":[{"t":"片段","hl":false},...],"subtitle":"...","keywords":["...","...","..."]}
+要求：
+- title 所有片段拼接为完整主标题，总长15~24字；hl:true 的片段会以黄色高亮显示，选数字/金额/身份/反差词等关键词，每套1~2处
+- subtitle 为红底白字副标题，不超过16字，口语化补充悬念或利益点
+- keywords 为3个关键词，各2~4字，概括视频核心要点（参考：包装、度数、总量）
+- 风格参考主标题「带白酒坐高铁，别到安检才后悔」：犀利、悬念、消费避坑`;
+
+// 背景照片：对齐你的分身人设与场景（AI 生成兜底用，真实人物应改用上传参考图）
+const BG_PROMPT = '真实摄影风格竖版照片：中年男性技术宅，45岁左右，戴黑框眼镜，穿橙色T恤，坐在书房书桌前正视镜头，表情认真笃定，桌上亮着一台笔记本电脑，旁边立着一瓶红色瓶身的酱香型白酒，背景是虚化的现代书架与暖白台灯，自然窗光，画面明亮干净，人物居中构图，画面上方留白';
+// 图生图提示词：保持人物不变，只改背景/构图（人物来自用户上传的参考图）
+const I2I_PROMPT = '保持照片中人物的五官、发型、脸型、体型、服装完全不变，只把画面调整为竖版手机封面构图：人物略偏下居中，背景改为明亮的虚化书房与暖白台灯，桌面旁立一瓶红色酱酒，整体明亮干净，画面上方约三分之一留白用于排版。不要改变人物长相，不要增减人数，不要生成任何文字。';
+
+function roundRect(ctx,x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r);
+  ctx.arcTo(x,y,x+w,y,r);
+  ctx.closePath();
+}
+
+// 把高亮片段按宽度折行：行 = [{ch,hl},...]
+function wrapSegments(segs, maxW, ctx){
+  const lines=[[]]; let w=0;
+  segs.forEach(s=>{ [...String(s.t)].forEach(ch=>{
+    const cw=ctx.measureText(ch).width;
+    if(w+cw>maxW && lines[lines.length-1].length){ lines.push([]); w=0; }
+    lines[lines.length-1].push({ch,hl:!!s.hl}); w+=cw;
+  });});
+  return lines.filter(l=>l.length);
+}
+
+// 画一张 1080×1440 封面
+function renderCover(scheme, bgDataUrl){
+  const W=1080,H=1440;
+  const cv=document.createElement('canvas'); cv.width=W; cv.height=H;
+  const ctx=cv.getContext('2d');
+  const img=new Image();
+  let drew=false;
+  function draw(){
+    if(drew) return; drew=true;
+    if(bgDataUrl && img.complete && img.naturalWidth){
+      const s=Math.max(W/img.naturalWidth,H/img.naturalHeight);
+      const dw=img.naturalWidth*s, dh=img.naturalHeight*s;
+      ctx.drawImage(img,(W-dw)/2,(H-dh)/2,dw,dh);
+    }else{ ctx.fillStyle='#e2e8f0'; ctx.fillRect(0,0,W,H); }
+    // 顶部渐变压暗，保证大字可读
+    const g=ctx.createLinearGradient(0,0,0,H*0.55);
+    g.addColorStop(0,'rgba(0,0,0,0.62)'); g.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H*0.55);
+    // 主标题（白字黑描边，高亮黄色）
+    const fontSize=96;
+    ctx.font='900 '+fontSize+'px "PingFang SC","Microsoft YaHei",sans-serif';
+    ctx.textBaseline='alphabetic'; ctx.textAlign='left'; ctx.lineJoin='round';
+    const lines=wrapSegments(scheme.title||[], W-120, ctx);
+    let y=180;
+    lines.forEach(line=>{
+      const total=line.reduce((a,c)=>a+ctx.measureText(c.ch).width,0);
+      let x=(W-total)/2;
+      line.forEach(c=>{
+        ctx.lineWidth=16; ctx.strokeStyle='#111111';
+        ctx.strokeText(c.ch,x,y);
+        ctx.fillStyle=c.hl?'#FFD400':'#FFFFFF';
+        ctx.fillText(c.ch,x,y);
+        x+=ctx.measureText(c.ch).width;
+      });
+      y+=fontSize*1.28;
+    });
+    // 红底白字副标题
+    if(scheme.subtitle){
+      ctx.font='900 52px "PingFang SC","Microsoft YaHei",sans-serif';
+      const t=String(scheme.subtitle);
+      const tw=ctx.measureText(t).width;
+      const bw=Math.min(tw+80,W-60), bh=92, bx=(W-bw)/2, by=y+10;
+      roundRect(ctx,bx,by,bw,bh,18); ctx.fillStyle='#E0342B'; ctx.fill();
+      ctx.fillStyle='#FFFFFF'; ctx.textAlign='center';
+      ctx.fillText(t,W/2,by+bh/2+18);
+      ctx.textAlign='left'; y=by+bh;
+    }
+    // 底部关键词栏
+    if(Array.isArray(scheme.keywords)&&scheme.keywords.length){
+      ctx.font='900 46px "PingFang SC","Microsoft YaHei",sans-serif';
+      const t=scheme.keywords.join('  ｜  ');
+      const tw=ctx.measureText(t).width;
+      ctx.lineWidth=12; ctx.strokeStyle='#111111';
+      ctx.strokeText(t,(W-tw)/2,H-70);
+      ctx.fillStyle='#FFFFFF'; ctx.fillText(t,(W-tw)/2,H-70);
+    }
+  }
+  if(bgDataUrl){ img.onload=draw; img.onerror=draw; img.src=bgDataUrl; }
+  else{ setTimeout(draw,0); }
+  return cv;
+}
+
+// ========== 上传参考图（封面人物来源） ==========
+let uploadedRefDataUrl = null; // 缩放后同源 dataURL，既用于直接背景也用于 i2i
+const refImgInput = document.getElementById('refImg');
+const refPreviewWrap = document.getElementById('refPreviewWrap');
+refImgInput.addEventListener('change', e=>{
+  const file = e.target.files && e.target.files[0];
+  if(!file){ uploadedRefDataUrl=null; refPreviewWrap.innerHTML=''; return; }
+  const reader = new FileReader();
+  reader.onload = ev=>{
+    const img = new Image();
+    img.onload = ()=>{
+      const maxSide = 1024;
+      let w = img.naturalWidth, h = img.naturalHeight;
+      const scale = Math.min(1, maxSide/Math.max(w,h));
+      w = Math.round(w*scale); h = Math.round(h*scale);
+      const c = document.createElement('canvas'); c.width=w; c.height=h;
+      c.getContext('2d').drawImage(img,0,0,w,h);
+      uploadedRefDataUrl = c.toDataURL('image/jpeg', 0.85);
+      refPreviewWrap.innerHTML = '<img src="'+uploadedRefDataUrl+'">';
+    };
+    img.onerror = ()=>{ alert('图片读取失败，请换一张试试'); };
+    img.src = ev.target.result;
+  };
+  reader.onerror = ()=>{ alert('文件读取失败'); };
+  reader.readAsDataURL(file);
+});
+
+async function genCoverForTopic(title, oral, model, apiKey, opts){
+  opts = opts || {};
+  // 0) 背景图来源优先级：参考图+万相精修 > 直接用真人参考图 > 万相 t2i 兜底
+  let bgDataUrl = null;
+  if(opts.fileDataUrl && opts.refine){
+    const w=await fetch('/api/wanx-i2i',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({apiKey, prompt:I2I_PROMPT, image:opts.fileDataUrl, strength:0.6, size:'720*1280'})});
+    const wj=await w.json();
+    if(wj.error) throw new Error('参考图精修失败：'+wj.error);
+    bgDataUrl = wj.image;
+  } else if(opts.fileDataUrl){
+    bgDataUrl = opts.fileDataUrl; // 直接用真人参考图，人物绝不造假
+  } else {
+    const w=await fetch('/api/wanx',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({apiKey,
+        prompt:BG_PROMPT,
+        negative_prompt:'文字，字幕，水印，logo，商标，画面扭曲，肢体畸形，多余手指，模糊，低质量'})});
+    const wj=await w.json();
+    if(wj.error) throw new Error('背景生成失败：'+wj.error);
+    bgDataUrl = wj.image;
+  }
+  // 1) 通义千问出5套文案
+  const r=await fetch('/api/qwen',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({model,apiKey,messages:[
+      {role:'system',content:COVER_SYSTEM},
+      {role:'user',content:'热点话题：'+title+'\n口播内容：'+(oral||'')+'\n请产出5套封面文案JSON。'}
+    ]})});
+  const j=await r.json();
+  if(j.error) throw new Error(j.error);
+  let schemes;
+  try{ schemes=JSON.parse(j.content); }catch(e){ throw new Error('封面文案JSON解析失败：'+String(j.content).slice(0,120)); }
+  if(!Array.isArray(schemes)) schemes=[schemes];
+  schemes=schemes.slice(0,5);
+  // 2) 5套排版
+  return schemes.map(s=>renderCover(s,bgDataUrl));
+}
+
+document.getElementById('genCoverBtn').onclick = async function(){
+  if(!lastGeneratedTitles.length){ alert('请先用【用通义千问生成脚本】生成话题，再来生成封面'); return; }
+  const status=document.getElementById('coverStatus');
+  const grid=document.getElementById('coverGrid'); grid.innerHTML='';
+  const model=document.getElementById('model').value;
+  const apiKey=document.getElementById('apiKey').value.trim();
+  const refineChk=document.getElementById('refineChk');
+  const bgMode = uploadedRefDataUrl ? (refineChk.checked ? '参考图 + 万相精修' : '真人参考图（直接用）') : 'AI 生成背景（兜底）';
+  for(let k=0;k<lastGeneratedTitles.length;k++){
+    const t=lastGeneratedTitles[k];
+    status.innerText='['+bgMode+'] 封面生成中 '+(k+1)+'/'+lastGeneratedTitles.length+'：'+t+'（每话题5套排版，约20~40秒）';
+    try{
+      const cvs=await genCoverForTopic(t,lastOralMap[t]||'',model,apiKey,{
+        fileDataUrl: uploadedRefDataUrl,
+        refine: refineChk.checked
+      });
+      cvs.forEach((cv,i)=>{
+        const card=document.createElement('div'); card.className='coverCard';
+        const lbl=document.createElement('div'); lbl.className='meta'; lbl.innerText=t+'｜第'+(i+1)+'套';
+        const btn=document.createElement('button'); btn.className='dlBtn'; btn.innerText='下载封面';
+        btn.onclick=()=>{ const a=document.createElement('a'); a.href=cv.toDataURL('image/png'); a.download='封面_'+t+'_第'+(i+1)+'套.png'; a.click(); };
+        card.appendChild(cv); card.appendChild(lbl); card.appendChild(btn);
+        grid.appendChild(card);
+      });
+    }catch(e){
+      status.innerText='❌ '+t+'：'+e.message;
+    }
+  }
+  if(status.innerText.indexOf('❌')!==0) status.innerText='✅ 封面生成完成，点击卡片下的按钮即可下载 1080×1440 PNG';
+};
+
+// ========== Tab 切换 ==========
+document.querySelectorAll('.tab').forEach(t=>{
+  t.onclick=()=>{
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById('panel-'+t.dataset.tab).classList.add('active');
+    refreshStat();
+  };
+});
+
+// ========== 启动检测：是否经由本地代理访问 ==========
+(function(){
+  const viaProxy = location.hostname==='localhost'||location.hostname==='127.0.0.1';
+  const warn=document.getElementById('onlineWarn');
+  if(!viaProxy){
+    warn.style.display='block';
+    warn.innerText='⚠️ 当前是直接打开的本地文件，浏览器跨域会拦截联网请求。请先运行 node server.js，再用 http://localhost:8787 打开本页。';
+  }else{
+    warn.style.display='none';
+  }
+})();
+
+refreshStat();
+</script>
+</body>
+</html>

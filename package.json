@@ -1,0 +1,13 @@
+{
+  "name": "short-video-script-generator",
+  "version": "1.0.0",
+  "description": "短视频爆款脚本生成器：联网热搜 + 通义千问 AI 生成脚本 + 通义万相封面（支持上传真人参考图）。需 Node 后端代理解决跨域。",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}
